@@ -27,6 +27,8 @@ struct Network {
 Network *root = NULL;
 Network *current = NULL;
 
+boolean isAp = false;
+
 #define DEFAULT_SSID "WaterBoyAP"
 #define DEFAULT_PASS "thereisnospoon"
 
@@ -110,6 +112,7 @@ void startAP() {
   WiFi.mode(WIFI_AP);
   WiFi.softAP(DEFAULT_SSID, DEFAULT_PASS);
   myIP = WiFi.softAPIP();
+  isAp = true;
 }
 
 void printParam(char *name, char *value){
@@ -126,7 +129,7 @@ void setup() {
 
   // prepare GPIO2
   pinMode(2, OUTPUT);
-  digitalWrite(2, HIGH);
+  digitalWrite(2, LOW);
 
   EEPROM.begin(512);
 
@@ -140,48 +143,36 @@ void setup() {
   printParam("HOST", configuration.host);
 
   WiFi.hostname(configuration.host);
-  
-  if(strlen(configuration.ssid) > 0){
+
+  if(!strchr(configuration.ssid, 0)){
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
     if(!connectConfiguredWiFi()){
       startAP();
     }
   } else {
+    Serial.println("Config is not set properly, starting AP...");
     startAP();  
   }
 
+  server.on("/", handleRoot );
   server.on("/config", showConfigForm );
   server.on("/submit", handleSubmit);
 
   server.on("/switch/0", []() {
     digitalWrite(2, LOW);
-    server.send(200, CONTENT_TYPE_TEXT_HTML, "\
-    <html> \
-    <head> \
-      <meta charset='utf-8' /> \
-    </head> \
-    <body> \
-      <h1>WaterBoy OS 1.1</h1> \
-      <p>GPIO is now LOW \
-    </body> \
-    </html>"
-    );
+    String location = "http://";
+    location += String(myIP);
+    server.sendHeader("Location", "/");
+    server.send(302, "text/plain", "");
   });
 
   server.on("/switch/1", []() {
     digitalWrite(2, HIGH);
-    server.send(200, CONTENT_TYPE_TEXT_HTML, "\
-    <html> \
-    <head> \
-      <meta charset='utf-8' /> \
-    </head> \
-    <body> \
-      <h1>WaterBoy OS 1.1</h1> \
-      <p>GPIO is now HIGH \
-    </body> \
-    </html>"
-    );
+    String location = "http://";
+    location += String(myIP);
+    server.sendHeader("Location", "/");
+    server.send(302, "text/plain", "");
   });
   
   server.begin();
@@ -196,11 +187,12 @@ void loop() {
 }
 
 void showConfigForm(){
-   String message = "<html>"
-   "<head><meta charset='utf-8' /></head><body>"
-   "<h1>WaterBoy OS 1.1</h1>"
-   "<form action=\"/submit\" method=\"POST\"> <table>"
-   "<tr><td>SSID: </td><td><select name=\"ssid\"/>";
+   String message = ""
+   "<form class='pure-form pure-form-stacked' action=\"/submit\" method=\"POST\">"
+   "<fieldset>"
+        "<legend>Connection settings</legend>"
+        "<label for='ssid'>SSID</label>"
+        "<select id='ssid'>";
 
    Network *iter;
    iter = root;
@@ -216,16 +208,64 @@ void showConfigForm(){
     iter=iter->next;
    }
    
-   message += "</select></td></tr>"
-   "<tr><td>PASS: </td><td><input name=\"password\" type=\"password\" /></td></tr>"
-   "<tr><td>HOST: </td><td><input name=\"host\" type=\"text\" /></td></tr> "
-   "<tr><td colspan=\"2\"><input name=\"submit\" type=\"submit\" value=\"Speichern\" />"
-   "</table>"
-   "</form>"
-   "</body>"
-   "</html>";
+   message += "</select>"
+        "<label for='password'>Passphrase</label>"
+        "<input id='password' type='password' placeholder='Password'>"
+        "<label for='host'>Hostname</label>"
+        "<input id='host' type='text' placeholder='host'>"
+        "<button type='submit' class='pure-button pure-button-primary'>Save config</button>"
+    "</fieldset>"
+   "</form>";
    message += "\n";
-   server.send(200, CONTENT_TYPE_TEXT_HTML, message);
+   server.send(200, CONTENT_TYPE_TEXT_HTML, basePage(message));
+}
+
+void handleRoot() {
+
+  String gpio0Str = String(digitalRead(0));
+  String gpio2Str = String(digitalRead(2));
+
+  String msg = "<p>Switch: ";
+  if(digitalRead(2) == LOW){
+    msg += "<a href='/switch/1' class='button-error pure-button'>OFF</a>";
+  }else {
+    msg += "<a href='/switch/0' class='button-success pure-button'>ON</a>";
+  }
+  
+  String content = basePage(msg);
+  server.send(200, CONTENT_TYPE_TEXT_HTML, content);
+}
+
+String basePage(String content){
+  String base =  \
+  "<!DOCTYPE html>"
+  "<html>"
+  "<head>"
+  "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+  "<meta charset=\"utf-8\">"
+  "<link rel=\"stylesheet\" href=\"http://yui.yahooapis.com/pure/0.6.0/pure-min.css\">"
+  "<style>"
+  ".custom-restricted-width {display: inline-block;}"
+  ".button-success {background: rgb(28, 184, 65);}"
+  ".button-error {background: rgb(202, 60, 60);}"
+  "</style>"
+  "</head>"
+  "<body>"
+  "<div class=\"pure-g\">"
+  "<div class=\"pure-u-1-3\">"
+  "<div class='pure-menu'>"
+  "<span class=\"pure-menu-heading\">Navigation</span>"
+  "<ul class='pure-menu-list'>"
+  "<li class='pure-menu-item'><a href='/' class='pure-menu-link'>Home</a></li>"
+  "<li class='pure-menu-item'><a href='/config' class='pure-menu-link'>Config</a></li>"
+  "</ul>"
+  "</div>"
+  "</div>"
+  "<div class=\"pure-u-1-3\">"
+  "<h1>WaterBoy OS 1.1</h1>";
+  base += content;
+  base += "</div></div></body></html>";
+  return base;
 }
 
 void handleSubmit() {
@@ -254,18 +294,9 @@ void handleSubmit() {
   
   EEPROM_writeAnything(0, configuration);
   EEPROM.commit();
-  server.send(200, CONTENT_TYPE_TEXT_HTML, "\
-  <html> \
-    <head> \
-      <meta charset='utf-8' /> \
-    </head> \
-    <body> \
-      <h1>WaterBoy OS 1.1</h1> \
-      <p>Saved config to EEPROM...</p> \
-      <p>... and restarting</p> \
-    </body> \
-  </html> \
-  ");
+  server.send(200, CONTENT_TYPE_TEXT_HTML, basePage(""
+    "<p>Saved config to EEPROM...</p>"
+    "<p>... and restarting</p>"));
   ESP.restart();
 }
 
