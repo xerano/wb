@@ -192,7 +192,7 @@ void showConfigForm(){
    "<fieldset>"
         "<legend>Connection settings</legend>"
         "<label for='ssid'>SSID</label>"
-        "<select id='ssid'>";
+        "<select id='ssid' name='ssid'>";
 
    Network *iter;
    iter = root;
@@ -210,9 +210,9 @@ void showConfigForm(){
    
    message += "</select>"
         "<label for='password'>Passphrase</label>"
-        "<input id='password' type='password' placeholder='Password'>"
+        "<input id='password' type='password' placeholder='Password' name='password'>"
         "<label for='host'>Hostname</label>"
-        "<input id='host' type='text' placeholder='host'>"
+        "<input id='host' type='text' placeholder='host' name='host'>"
         "<button type='submit' class='pure-button pure-button-primary'>Save config</button>"
     "</fieldset>"
    "</form>";
